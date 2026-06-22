@@ -70,6 +70,7 @@ const db = getFirestore(app);
 
 const $ = (id) => document.getElementById(id);
 
+const landingBox = $("landingBox");
 const authBox = $("authBox");
 const signupBox = $("signupBox");
 const appPages = $("appPages");
@@ -83,6 +84,13 @@ const footerNote = $("footerNote");
 const companyNameInput = $("companyName");
 const companyLogoInput = $("companyLogo");
 const companyThemeColorInput = $("companyThemeColor");
+const companyTimezoneInput = $("companyTimezone");
+const setupTitle = $("setupTitle");
+const setupSubtitle = $("setupSubtitle");
+const setupBackBtn = $("setupBackBtn");
+const setupNextBtn = $("setupNextBtn");
+const setupReviewCompany = $("setupReviewCompany");
+const setupReviewOwner = $("setupReviewOwner");
 const settingsCompanyName = $("settingsCompanyName");
 const settingsThemeColor = $("settingsThemeColor");
 const settingsLogo = $("settingsLogo");
@@ -172,6 +180,7 @@ let currentCompanySettings = null;
 let currentUserRole = "employee";
 let currentEmployeeWeekStart = getStartOfWeek(new Date());
 let cachedEmployees = [];
+let setupStep = 1;
 
 /* =========================
    3. Startup + button listeners
@@ -180,6 +189,28 @@ let cachedEmployees = [];
 setCurrentWeek();
 setTodayDate();
 setupEmployeeDropdown();
+showLanding();
+
+$("startSetupBtn")?.addEventListener("click", openSetup);
+$("showLoginBtn")?.addEventListener("click", showLogin);
+setupBackBtn?.addEventListener("click", () => changeSetupStep(setupStep - 1));
+setupNextBtn?.addEventListener("click", () => { if (validateSetupStep(setupStep)) changeSetupStep(setupStep + 1); });
+document.querySelectorAll(".color-preset").forEach((button) => {
+  button.addEventListener("click", () => {
+    if (companyThemeColorInput) companyThemeColorInput.value = button.dataset.color || "#111111";
+    document.documentElement.style.setProperty("--black", companyThemeColorInput.value);
+    document.documentElement.style.setProperty("--dark-gray", companyThemeColorInput.value);
+  });
+});
+companyThemeColorInput?.addEventListener("input", () => {
+  document.documentElement.style.setProperty("--black", companyThemeColorInput.value);
+  document.documentElement.style.setProperty("--dark-gray", companyThemeColorInput.value);
+});
+companyLogoInput?.addEventListener("change", async () => {
+  const logoDataUrl = await fileToDataURL(companyLogoInput.files?.[0]);
+  const logo = document.querySelector(".logo");
+  if (logo && logoDataUrl) logo.src = logoDataUrl;
+});
 
 $("showPasswordBtn")?.addEventListener("click", () => togglePassword("password", "showPasswordBtn"));
 saveCompanySettingsBtn?.addEventListener("click", saveCompanySettings);
@@ -188,15 +219,9 @@ manageBillingBtn?.addEventListener("click", () => alert("Stripe customer portal 
 $("showSignupPasswordBtn")?.addEventListener("click", () => togglePassword("signupPassword", "showSignupPasswordBtn"));
 $("showConfirmPasswordBtn")?.addEventListener("click", () => togglePassword("confirmPassword", "showConfirmPasswordBtn"));
 
-$("openSignupBtn")?.addEventListener("click", () => {
-  authBox.classList.add("hidden");
-  signupBox.classList.remove("hidden");
-});
+$("openSignupBtn")?.addEventListener("click", openSetup);
 
-$("backToLoginBtn")?.addEventListener("click", () => {
-  signupBox.classList.add("hidden");
-  authBox.classList.remove("hidden");
-});
+$("backToLoginBtn")?.addEventListener("click", showLogin);
 
 $("forgotPasswordLink")?.addEventListener("click", async () => {
   const email = $("email").value.trim().toLowerCase();
@@ -217,6 +242,7 @@ $("signupBtn")?.addEventListener("click", async () => {
   const confirmPassword = $("confirmPassword").value;
   const companyName = companyNameInput?.value.trim();
   const primaryColor = companyThemeColorInput?.value || "#111111";
+  const timezone = companyTimezoneInput?.value || Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Chicago";
 
   if (!companyName) return alert("Enter your company name.");
   if (!name || !email || !password || !confirmPassword) return alert("Enter name, email, password, and confirm password.");
@@ -225,7 +251,7 @@ $("signupBtn")?.addEventListener("click", async () => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const logoDataUrl = await fileToDataURL(companyLogoInput?.files?.[0]);
-    await createCompanyForOwner(userCredential.user, companyName, name, primaryColor, logoDataUrl);
+    await createCompanyForOwner(userCredential.user, companyName, name, primaryColor, logoDataUrl, timezone);
     currentUserName = name;
     alert("Company workspace created!");
   } catch (error) {
@@ -358,6 +384,92 @@ myScheduleCalendar?.addEventListener("click", async (event) => {
 
 
 /* =========================
+   Company setup wizard
+   ========================= */
+
+function showLanding() {
+  landingBox?.classList.remove("hidden");
+  authBox?.classList.add("hidden");
+  signupBox?.classList.add("hidden");
+}
+
+function showLogin() {
+  landingBox?.classList.add("hidden");
+  signupBox?.classList.add("hidden");
+  authBox?.classList.remove("hidden");
+}
+
+function openSetup() {
+  landingBox?.classList.add("hidden");
+  authBox?.classList.add("hidden");
+  signupBox?.classList.remove("hidden");
+  changeSetupStep(1);
+}
+
+function changeSetupStep(nextStep) {
+  setupStep = Math.max(1, Math.min(4, Number(nextStep) || 1));
+
+  document.querySelectorAll(".setup-step").forEach((step) => {
+    step.classList.toggle("hidden", step.dataset.step !== String(setupStep));
+  });
+
+  document.querySelectorAll(".setup-dot").forEach((dot) => {
+    dot.classList.toggle("active", Number(dot.dataset.stepDot) <= setupStep);
+  });
+
+  const titles = {
+    1: "Create Your Company Workspace",
+    2: "Customize Your Branding",
+    3: "Create the Owner Account",
+    4: "Review and Launch"
+  };
+
+  const subtitles = {
+    1: "Step 1 of 4: Tell us about the business.",
+    2: "Step 2 of 4: Add a logo and choose the app color.",
+    3: "Step 3 of 4: This person becomes the company owner/admin.",
+    4: "Step 4 of 4: Confirm everything and create the workspace."
+  };
+
+  if (setupTitle) setupTitle.textContent = titles[setupStep];
+  if (setupSubtitle) setupSubtitle.textContent = subtitles[setupStep];
+  setupBackBtn?.classList.toggle("hidden", setupStep === 1);
+  setupNextBtn?.classList.toggle("hidden", setupStep === 4);
+  $("signupBtn")?.classList.toggle("hidden", setupStep !== 4);
+
+  if (setupStep === 4) {
+    if (setupReviewCompany) setupReviewCompany.textContent = companyNameInput?.value.trim() || "Company Name";
+    if (setupReviewOwner) setupReviewOwner.textContent = $("signupEmail")?.value.trim() || "Owner email";
+  }
+}
+
+function validateSetupStep(step) {
+  if (step === 1 && !companyNameInput?.value.trim()) {
+    alert("Enter the company name first.");
+    return false;
+  }
+
+  if (step === 3) {
+    const name = $("signupName")?.value.trim();
+    const email = $("signupEmail")?.value.trim();
+    const password = $("signupPassword")?.value;
+    const confirmPassword = $("confirmPassword")?.value;
+
+    if (!name || !email || !password || !confirmPassword) {
+      alert("Enter owner name, owner email, password, and confirm password.");
+      return false;
+    }
+
+    if (password !== confirmPassword) {
+      alert("Passwords do not match.");
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/* =========================
    SaaS tenant helpers
    ========================= */
 
@@ -375,7 +487,7 @@ function tdoc(collectionName, documentId) {
   return doc(db, "companies", currentCompanyId, collectionName, documentId);
 }
 
-async function createCompanyForOwner(user, companyName, ownerName, primaryColor, logoDataUrl) {
+async function createCompanyForOwner(user, companyName, ownerName, primaryColor, logoDataUrl, timezone) {
   const cleanEmail = user.email.toLowerCase().trim();
   const companyId = crypto.randomUUID ? crypto.randomUUID() : `company_${Date.now()}`;
   currentCompanyId = companyId;
@@ -384,6 +496,7 @@ async function createCompanyForOwner(user, companyName, ownerName, primaryColor,
   const settings = {
     companyName,
     primaryColor,
+    timezone: timezone || "America/Chicago",
     logoDataUrl: logoDataUrl || "",
     billingStatus: "trial",
     plan: "Trial",
@@ -2161,6 +2274,7 @@ function escapeHTML(value) {
 
 onAuthStateChanged(auth, async (user) => {
   if (user) {
+    landingBox?.classList.add("hidden");
     authBox.classList.add("hidden");
     signupBox.classList.add("hidden");
     appPages.classList.remove("hidden");
@@ -2205,7 +2319,8 @@ onAuthStateChanged(auth, async (user) => {
       await loadAdminSchedules();
     }
   } else {
-    authBox.classList.remove("hidden");
+    landingBox?.classList.remove("hidden");
+    authBox.classList.add("hidden");
     signupBox.classList.add("hidden");
     appPages.classList.add("hidden");
     hamburgerBtn.classList.add("hidden");

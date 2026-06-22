@@ -22,7 +22,7 @@
   -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-  <title>Demo Timecard</title>
+  <title>Workforce Setup</title>
   <link rel="stylesheet" href="styles.css" />
 
   <link rel="icon" type="image/jpeg" href="images/your-logo.jpg?v=2" />
@@ -61,7 +61,6 @@
       <button class="menu-link" type="button" data-page="adminTimeEditPage">Time Edit Approvals</button>
       <button class="menu-link" type="button" data-page="adminWeeklyRecordsPage">Weekly Records</button>
       <button class="menu-link" type="button" data-page="adminSignaturesPage">Signatures Log</button>
-      <button class="menu-link" type="button" data-page="companySettingsPage">Company Settings</button>
       <button class="menu-link" type="button" data-page="adminPunchEditorPage">Edit Punches</button>
     </div>
 
@@ -71,7 +70,25 @@
   <div id="menuOverlay" class="menu-overlay hidden"></div>
 
   <main class="app-shell">
-    <section id="authBox" class="card auth-card">
+    <section id="landingBox" class="card landing-card">
+      <p class="eyebrow">Workforce Management SaaS</p>
+      <h2>Run timecards, schedules, time off, and approvals from one app.</h2>
+      <p class="muted">Create a company workspace, add your logo, choose your colors, and invite your team.</p>
+
+      <div class="landing-actions">
+        <button id="startSetupBtn" type="button">Start Free Trial</button>
+        <button id="showLoginBtn" type="button" class="outline-btn">Log In</button>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-pill">🕒 Time Clock</div>
+        <div class="feature-pill">📅 Scheduling</div>
+        <div class="feature-pill">🌴 Time Off</div>
+        <div class="feature-pill">✅ Approvals</div>
+      </div>
+    </section>
+
+    <section id="authBox" class="card auth-card hidden">
       <h2>Login</h2>
       <p class="muted">Enter your email and password.</p>
 
@@ -88,35 +105,77 @@
       <p class="spam-note">Check your spam or junk folder if you do not see the reset email.</p>
     </section>
 
-    <section id="signupBox" class="card auth-card hidden">
-      <h2>Create Account</h2>
-      <p class="muted">Create your company workspace. You will become the owner/admin.</p>
+    <section id="signupBox" class="card auth-card setup-card hidden">
+      <p class="eyebrow">Company Setup</p>
+      <h2 id="setupTitle">Create Your Company Workspace</h2>
+      <p id="setupSubtitle" class="muted">Step 1 of 4: Tell us about the business.</p>
 
-      <label for="companyName">Company Name:</label>
-      <input id="companyName" type="text" placeholder="Example: ABC Electric" autocomplete="organization" />
-
-      <label for="companyThemeColor">Company Theme Color:</label>
-      <input id="companyThemeColor" type="color" value="#111111" />
-
-      <label for="companyLogo">Company Logo:</label>
-      <input id="companyLogo" type="file" accept="image/*" />
-
-      <hr class="form-divider" />
-
-      <input id="signupName" type="text" placeholder="Owner Full Name" autocomplete="name" />
-      <input id="signupEmail" type="email" placeholder="Email" autocomplete="email" />
-
-      <div class="password-row">
-        <input id="signupPassword" type="password" placeholder="Password" autocomplete="new-password" />
-        <button id="showSignupPasswordBtn" type="button" class="show-btn">Show</button>
+      <div class="setup-progress">
+        <span class="setup-dot active" data-step-dot="1"></span>
+        <span class="setup-dot" data-step-dot="2"></span>
+        <span class="setup-dot" data-step-dot="3"></span>
+        <span class="setup-dot" data-step-dot="4"></span>
       </div>
 
-      <div class="password-row">
-        <input id="confirmPassword" type="password" placeholder="Confirm Password" autocomplete="new-password" />
-        <button id="showConfirmPasswordBtn" type="button" class="show-btn">Show</button>
+      <div class="setup-step" data-step="1">
+        <label for="companyName">Company Name:</label>
+        <input id="companyName" type="text" placeholder="Example: ABC Electric" autocomplete="organization" />
+
+        <label for="companyTimezone">Timezone:</label>
+        <select id="companyTimezone">
+          <option value="America/Los_Angeles">Pacific Time</option>
+          <option value="America/Denver">Mountain Time</option>
+          <option value="America/Chicago">Central Time</option>
+          <option value="America/New_York">Eastern Time</option>
+        </select>
       </div>
 
-      <button id="signupBtn" type="button">Create Account</button>
+      <div class="setup-step hidden" data-step="2">
+        <label for="companyThemeColor">Company Theme Color:</label>
+        <input id="companyThemeColor" type="color" value="#111111" />
+
+        <div class="color-preset-grid">
+          <button type="button" class="color-preset" data-color="#111111">Black</button>
+          <button type="button" class="color-preset" data-color="#0057c8">Blue</button>
+          <button type="button" class="color-preset" data-color="#16803c">Green</button>
+          <button type="button" class="color-preset" data-color="#b42318">Red</button>
+        </div>
+
+        <label for="companyLogo">Company Logo:</label>
+        <input id="companyLogo" type="file" accept="image/*" />
+        <p class="spam-note">You can skip the logo for now and add it later in Company Settings.</p>
+      </div>
+
+      <div class="setup-step hidden" data-step="3">
+        <input id="signupName" type="text" placeholder="Owner Full Name" autocomplete="name" />
+        <input id="signupEmail" type="email" placeholder="Owner Email" autocomplete="email" />
+
+        <div class="password-row">
+          <input id="signupPassword" type="password" placeholder="Password" autocomplete="new-password" />
+          <button id="showSignupPasswordBtn" type="button" class="show-btn">Show</button>
+        </div>
+
+        <div class="password-row">
+          <input id="confirmPassword" type="password" placeholder="Confirm Password" autocomplete="new-password" />
+          <button id="showConfirmPasswordBtn" type="button" class="show-btn">Show</button>
+        </div>
+      </div>
+
+      <div class="setup-step hidden" data-step="4">
+        <div class="setup-summary-box">
+          <p class="status-label">Company</p>
+          <h3 id="setupReviewCompany">Company Name</h3>
+          <p class="muted" id="setupReviewOwner">Owner email</p>
+          <p class="muted">Plan: Free trial. Stripe billing will connect next.</p>
+        </div>
+      </div>
+
+      <div class="setup-actions">
+        <button id="setupBackBtn" type="button" class="outline-btn hidden">Back</button>
+        <button id="setupNextBtn" type="button">Next</button>
+        <button id="signupBtn" type="button" class="hidden">Create Company Workspace</button>
+      </div>
+
       <button id="backToLoginBtn" type="button" class="outline-btn">Back to Login</button>
     </section>
 
@@ -245,34 +304,6 @@
 
             <button id="saveNameBtn" type="button">Save Name</button>
             <button id="resetPasswordBtn" type="button" class="outline-btn">Send Password Reset Email</button>
-          </section>
-        </div>
-      </section>
-
-      <section id="companySettingsPage" class="app-page hidden admin-page">
-        <div class="page-inner">
-          <section id="companySettingsBox" class="card">
-            <h2>Company Settings</h2>
-            <p class="muted">Update the company logo, app color, workspace name, and billing status.</p>
-
-            <label for="settingsCompanyName">Company Name:</label>
-            <input id="settingsCompanyName" type="text" placeholder="Company name" autocomplete="organization" />
-
-            <label for="settingsThemeColor">Theme Color:</label>
-            <input id="settingsThemeColor" type="color" value="#111111" />
-
-            <label for="settingsLogo">Replace Logo:</label>
-            <input id="settingsLogo" type="file" accept="image/*" />
-
-            <button id="saveCompanySettingsBtn" type="button">Save Company Settings</button>
-
-            <div class="billing-box">
-              <p class="status-label">Billing</p>
-              <h3 id="billingPlanText">Trial - setup needed</h3>
-              <p class="muted">Stripe checkout and the customer portal need Cloud Functions before real payments can run.</p>
-              <button id="startTrialBtn" type="button" class="outline-btn">Start / Upgrade Plan</button>
-              <button id="manageBillingBtn" type="button" class="outline-btn">Manage Billing</button>
-            </div>
           </section>
         </div>
       </section>

@@ -1216,3 +1216,105 @@ input[type="file"] {
   background: #f9fafb;
   border: 1px solid #d8dadd;
 }
+
+/* =========================
+   SaaS Company Setup Wizard
+   ========================= */
+
+.landing-card,
+.setup-card {
+  width: min(680px, 100%);
+  margin: 18px auto;
+}
+
+.eyebrow {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.landing-card h2 {
+  font-size: 34px;
+  line-height: 1.1;
+}
+
+.landing-actions,
+.setup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.feature-pill {
+  padding: 14px;
+  border: 1px solid var(--silver);
+  border-radius: 14px;
+  background: #f9fafb;
+  font-weight: bold;
+  text-align: center;
+}
+
+.setup-progress {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0 8px;
+}
+
+.setup-dot {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--silver);
+}
+
+.setup-dot.active {
+  background: var(--black);
+}
+
+.setup-step {
+  margin-top: 8px;
+}
+
+.color-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.color-preset {
+  padding: 12px 8px;
+  font-size: 14px;
+}
+
+.setup-summary-box {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--silver);
+  border-radius: 16px;
+  background: #f9fafb;
+}
+
+@media (max-width: 600px) {
+  .landing-card h2 {
+    font-size: 27px !important;
+  }
+
+  .landing-actions,
+  .setup-actions,
+  .feature-grid,
+  .color-preset-grid {
+    grid-template-columns: 1fr;
+  }
+}
