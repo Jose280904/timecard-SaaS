@@ -57,7 +57,8 @@ const firebaseConfig = {
   measurementId: "G-WQ8XFDVR2X"
 };
 
-const adminEmails = ["centralwebservices@outlook.com"];
+// SaaS note:
+// Admin access is now based on the user role saved under the company, not a hard-coded email.
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -78,6 +79,17 @@ const closeMenuBtn = $("closeMenuBtn");
 const menuOverlay = $("menuOverlay");
 const adminMenuLinks = $("adminMenuLinks");
 const footerNote = $("footerNote");
+
+const companyNameInput = $("companyName");
+const companyLogoInput = $("companyLogo");
+const companyThemeColorInput = $("companyThemeColor");
+const settingsCompanyName = $("settingsCompanyName");
+const settingsThemeColor = $("settingsThemeColor");
+const settingsLogo = $("settingsLogo");
+const saveCompanySettingsBtn = $("saveCompanySettingsBtn");
+const billingPlanText = $("billingPlanText");
+const startTrialBtn = $("startTrialBtn");
+const manageBillingBtn = $("manageBillingBtn");
 
 const welcomeText = $("welcomeText");
 const clockStatusText = $("clockStatusText");
@@ -155,6 +167,9 @@ const myScheduleCalendar = $("myScheduleCalendar");
 const selectedScheduleDetails = $("selectedScheduleDetails");
 
 let currentUserName = "";
+let currentCompanyId = "";
+let currentCompanySettings = null;
+let currentUserRole = "employee";
 let currentEmployeeWeekStart = getStartOfWeek(new Date());
 let cachedEmployees = [];
 
@@ -167,6 +182,9 @@ setTodayDate();
 setupEmployeeDropdown();
 
 $("showPasswordBtn")?.addEventListener("click", () => togglePassword("password", "showPasswordBtn"));
+saveCompanySettingsBtn?.addEventListener("click", saveCompanySettings);
+startTrialBtn?.addEventListener("click", () => alert("Stripe checkout is the next backend step. This button is ready for a Cloud Function checkout link."));
+manageBillingBtn?.addEventListener("click", () => alert("Stripe customer portal is the next backend step. This button is ready for a Cloud Function portal link."));
 $("showSignupPasswordBtn")?.addEventListener("click", () => togglePassword("signupPassword", "showSignupPasswordBtn"));
 $("showConfirmPasswordBtn")?.addEventListener("click", () => togglePassword("confirmPassword", "showConfirmPasswordBtn"));
 
@@ -197,15 +215,19 @@ $("signupBtn")?.addEventListener("click", async () => {
   const email = $("signupEmail").value.trim().toLowerCase();
   const password = $("signupPassword").value;
   const confirmPassword = $("confirmPassword").value;
+  const companyName = companyNameInput?.value.trim();
+  const primaryColor = companyThemeColorInput?.value || "#111111";
 
+  if (!companyName) return alert("Enter your company name.");
   if (!name || !email || !password || !confirmPassword) return alert("Enter name, email, password, and confirm password.");
   if (password !== confirmPassword) return alert("Passwords do not match.");
 
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    await saveEmployeeName(userCredential.user.uid, email, name, true);
+    const logoDataUrl = await fileToDataURL(companyLogoInput?.files?.[0]);
+    await createCompanyForOwner(userCredential.user, companyName, name, primaryColor, logoDataUrl);
     currentUserName = name;
-    alert("Account created!");
+    alert("Company workspace created!");
   } catch (error) {
     alert(error.message);
   }
@@ -246,6 +268,7 @@ document.querySelectorAll(".menu-link").forEach((button) => {
     if (button.dataset.page === "adminWeeklyRecordsPage") await loadWeeklyRecords();
     if (button.dataset.page === "adminSignaturesPage") await loadWeeklySignatures();
     if (button.dataset.page === "adminPunchEditorPage") await loadAdminPunchEditor();
+    if (button.dataset.page === "companySettingsPage") await loadCompanySettingsForm();
   });
 });
 
@@ -333,6 +356,139 @@ myScheduleCalendar?.addEventListener("click", async (event) => {
   await showScheduleDetailsForDate(dayBtn.dataset.date);
 });
 
+
+/* =========================
+   SaaS tenant helpers
+   ========================= */
+
+function companyRef(companyId = currentCompanyId) {
+  return doc(db, "companies", companyId);
+}
+
+function tcol(collectionName) {
+  if (!currentCompanyId) throw new Error("No company workspace loaded yet.");
+  return collection(db, "companies", currentCompanyId, collectionName);
+}
+
+function tdoc(collectionName, documentId) {
+  if (!currentCompanyId) throw new Error("No company workspace loaded yet.");
+  return doc(db, "companies", currentCompanyId, collectionName, documentId);
+}
+
+async function createCompanyForOwner(user, companyName, ownerName, primaryColor, logoDataUrl) {
+  const cleanEmail = user.email.toLowerCase().trim();
+  const companyId = crypto.randomUUID ? crypto.randomUUID() : `company_${Date.now()}`;
+  currentCompanyId = companyId;
+  currentUserRole = "owner";
+
+  const settings = {
+    companyName,
+    primaryColor,
+    logoDataUrl: logoDataUrl || "",
+    billingStatus: "trial",
+    plan: "Trial",
+    trialStartedAt: new Date().toISOString(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+
+  await setDoc(companyRef(companyId), settings, { merge: true });
+  await setDoc(doc(db, "users", user.uid), {
+    uid: user.uid,
+    email: cleanEmail,
+    name: ownerName,
+    companyId,
+    role: "owner",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
+  await setDoc(doc(db, "companies", companyId, "members", user.uid), {
+    uid: user.uid,
+    email: cleanEmail,
+    name: ownerName,
+    role: "owner",
+    active: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
+  await saveEmployeeName(user.uid, cleanEmail, ownerName, true);
+  await applyCompanyBranding(settings);
+}
+
+async function loadUserCompany(user) {
+  const userSnap = await getDoc(doc(db, "users", user.uid));
+  if (!userSnap.exists()) return false;
+
+  const userData = userSnap.data();
+  currentCompanyId = userData.companyId || "";
+  currentUserRole = userData.role || "employee";
+  if (!currentCompanyId) return false;
+
+  const companySnap = await getDoc(companyRef(currentCompanyId));
+  currentCompanySettings = companySnap.exists() ? companySnap.data() : null;
+  await applyCompanyBranding(currentCompanySettings);
+  return true;
+}
+
+async function applyCompanyBranding(settings) {
+  if (!settings) return;
+  const primaryColor = settings.primaryColor || "#111111";
+  document.documentElement.style.setProperty("--black", primaryColor);
+  document.documentElement.style.setProperty("--dark-gray", primaryColor);
+
+  const logo = document.querySelector(".logo");
+  if (logo && settings.logoDataUrl) logo.src = settings.logoDataUrl;
+
+  const title = settings.companyName || "Workforce Timecard";
+  document.title = title;
+}
+
+async function loadCompanySettingsForm() {
+  if (!currentCompanyId) return;
+  const snap = await getDoc(companyRef());
+  const settings = snap.exists() ? snap.data() : {};
+  currentCompanySettings = settings;
+
+  if (settingsCompanyName) settingsCompanyName.value = settings.companyName || "";
+  if (settingsThemeColor) settingsThemeColor.value = settings.primaryColor || "#111111";
+  if (billingPlanText) billingPlanText.textContent = `${settings.plan || "Trial"} - ${settings.billingStatus || "trial"}`;
+}
+
+async function saveCompanySettings() {
+  if (!currentCompanyId) return alert("No company workspace loaded.");
+  if (!isOwnerOrAdmin()) return alert("Only owners/admins can update company settings.");
+
+  const logoDataUrl = await fileToDataURL(settingsLogo?.files?.[0]);
+  const update = {
+    companyName: settingsCompanyName?.value.trim() || currentCompanySettings?.companyName || "Company",
+    primaryColor: settingsThemeColor?.value || currentCompanySettings?.primaryColor || "#111111",
+    updatedAt: serverTimestamp()
+  };
+
+  if (logoDataUrl) update.logoDataUrl = logoDataUrl;
+
+  await setDoc(companyRef(), update, { merge: true });
+  currentCompanySettings = { ...(currentCompanySettings || {}), ...update };
+  await applyCompanyBranding(currentCompanySettings);
+  alert("Company settings saved.");
+}
+
+function isOwnerOrAdmin() {
+  return ["owner", "admin"].includes(String(currentUserRole || "").toLowerCase());
+}
+
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return resolve("");
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 /* =========================
    4. Employee dropdown for schedule builder
    =========================
@@ -405,7 +561,7 @@ async function getEmployeesForDropdown() {
   const employeesByEmail = new Map();
 
   // Primary source: employeeNames collection. This is the cleanest list for the dropdown.
-  const namesSnapshot = await getDocs(collection(db, "employeeNames"));
+  const namesSnapshot = await getDocs(tcol("employeeNames"));
   namesSnapshot.forEach((docSnap) => {
     const data = docSnap.data();
     const email = (data.email || docSnap.id || "").toLowerCase().trim();
@@ -414,7 +570,7 @@ async function getEmployeesForDropdown() {
   });
 
   // Backup source: employees collection. This helps if an account exists but employeeNames is missing.
-  const employeesSnapshot = await getDocs(collection(db, "employees"));
+  const employeesSnapshot = await getDocs(tcol("employees"));
   employeesSnapshot.forEach((docSnap) => {
     const data = docSnap.data();
     const email = (data.email || "").toLowerCase().trim();
@@ -475,7 +631,7 @@ async function savePunch(type) {
   if (!currentUserName) currentUserName = await getEmployeeName(user.uid, cleanEmail);
 
   try {
-    await addDoc(collection(db, "punches"), {
+    await addDoc(tcol("punches"), {
       employeeId: user.uid,
       employeeName: currentUserName || cleanEmail,
       employeeEmail: cleanEmail,
@@ -498,7 +654,7 @@ async function loadClockStatus() {
 
   try {
     const cleanEmail = user.email.toLowerCase().trim();
-    const q = query(collection(db, "punches"), orderBy("time", "desc"));
+    const q = query(tcol("punches"), orderBy("time", "desc"));
     const snapshot = await getDocs(q);
     let lastPunch = null;
 
@@ -550,7 +706,7 @@ async function submitTimeOffRequest() {
     const cleanEmail = user.email.toLowerCase().trim();
     if (!currentUserName) currentUserName = await getEmployeeName(user.uid, cleanEmail);
 
-    await addDoc(collection(db, "timeOffRequests"), {
+    await addDoc(tcol("timeOffRequests"), {
       employeeId: user.uid,
       employeeName: currentUserName || cleanEmail,
       employeeEmail: cleanEmail,
@@ -576,7 +732,7 @@ async function loadMyTimeOffRequests() {
 
   try {
     const cleanEmail = user.email.toLowerCase().trim();
-    const q = query(collection(db, "timeOffRequests"), orderBy("requestedAt", "desc"));
+    const q = query(tcol("timeOffRequests"), orderBy("requestedAt", "desc"));
     const snapshot = await getDocs(q);
     let html = "";
 
@@ -595,7 +751,7 @@ async function loadMyTimeOffRequests() {
 
 async function loadPendingTimeOffRequests() {
   try {
-    const q = query(collection(db, "timeOffRequests"), orderBy("requestedAt", "desc"));
+    const q = query(tcol("timeOffRequests"), orderBy("requestedAt", "desc"));
     const snapshot = await getDocs(q);
     let html = "";
 
@@ -617,7 +773,7 @@ async function approveTimeOffRequest(requestId) {
   if (!confirm("Approve this time off request?")) return;
 
   try {
-    await updateDoc(doc(db, "timeOffRequests", requestId), {
+    await updateDoc(tdoc("timeOffRequests", requestId), {
       status: "Approved",
       reviewedBy: adminUser.email.toLowerCase().trim(),
       reviewedAt: serverTimestamp()
@@ -637,7 +793,7 @@ async function rejectTimeOffRequest(requestId) {
   if (!confirm("Reject this time off request?")) return;
 
   try {
-    await updateDoc(doc(db, "timeOffRequests", requestId), {
+    await updateDoc(tdoc("timeOffRequests", requestId), {
       status: "Rejected",
       reviewedBy: adminUser.email.toLowerCase().trim(),
       reviewedAt: serverTimestamp()
@@ -782,7 +938,7 @@ async function showScheduleDetailsForDate(dateValue) {
 }
 
 async function getSchedulesForEmployee(email) {
-  const q = query(collection(db, "schedules"), orderBy("scheduleDateTime", "asc"));
+  const q = query(tcol("schedules"), orderBy("scheduleDateTime", "asc"));
   const snapshot = await getDocs(q);
   const schedules = [];
 
@@ -798,7 +954,7 @@ async function getSchedulesForEmployee(email) {
 
 async function getTimeOffForEmployee(email) {
   try {
-    const q = query(collection(db, "timeOffRequests"), orderBy("requestedAt", "desc"));
+    const q = query(tcol("timeOffRequests"), orderBy("requestedAt", "desc"));
     const snapshot = await getDocs(q);
     const requests = [];
 
@@ -955,7 +1111,7 @@ async function postEmployeeSchedule() {
   try {
     const weekValue = getWeekValueFromDate(scheduleDateObj);
 
-    await addDoc(collection(db, "schedules"), {
+    await addDoc(tcol("schedules"), {
       employeeEmail,
       employeeName,
       date: dateValue,
@@ -995,7 +1151,7 @@ async function saveScheduleEdit() {
   if (calculateShiftMinutes(startTimeValue, endTimeValue) <= 0) return alert("End time must be after start time.");
 
   try {
-    await updateDoc(doc(db, "schedules", scheduleId), {
+    await updateDoc(tdoc("schedules", scheduleId), {
       startTime: startTimeValue,
       endTime: endTimeValue,
       location: locationValue,
@@ -1029,7 +1185,7 @@ async function softDeleteSchedule(scheduleId) {
   if (!adminUser) return;
 
   try {
-    await updateDoc(doc(db, "schedules", scheduleId), {
+    await updateDoc(tdoc("schedules", scheduleId), {
       deleted: true,
       deletedBy: adminUser.email.toLowerCase().trim(),
       deletedAt: serverTimestamp()
@@ -1073,7 +1229,7 @@ async function getExistingScheduleForEmployeeDate(employeeEmail, dateValue) {
 }
 
 async function getApprovedTimeOffDates(employeeEmail) {
-  const q = query(collection(db, "timeOffRequests"), orderBy("requestedAt", "desc"));
+  const q = query(tcol("timeOffRequests"), orderBy("requestedAt", "desc"));
   const snapshot = await getDocs(q);
   const dates = new Set();
 
@@ -1093,7 +1249,7 @@ async function loadAdminSchedules() {
   if (!selectedWeek) return alert("Please choose a week first.");
 
   try {
-    const q = query(collection(db, "schedules"), orderBy("scheduleDateTime", "asc"));
+    const q = query(tcol("schedules"), orderBy("scheduleDateTime", "asc"));
     const snapshot = await getDocs(q);
     const grouped = {};
 
@@ -1211,7 +1367,7 @@ async function submitTimeEditRequest() {
     const cleanEmail = user.email.toLowerCase().trim();
     if (!currentUserName) currentUserName = await getEmployeeName(user.uid, cleanEmail);
 
-    await addDoc(collection(db, "timeEditRequests"), {
+    await addDoc(tcol("timeEditRequests"), {
       employeeId: user.uid,
       employeeName: currentUserName || cleanEmail,
       employeeEmail: cleanEmail,
@@ -1238,7 +1394,7 @@ async function loadMyTimeEditRequests() {
 
   try {
     const cleanEmail = user.email.toLowerCase().trim();
-    const q = query(collection(db, "timeEditRequests"), orderBy("requestedAt", "desc"));
+    const q = query(tcol("timeEditRequests"), orderBy("requestedAt", "desc"));
     const snapshot = await getDocs(q);
     let html = "";
 
@@ -1257,7 +1413,7 @@ async function loadMyTimeEditRequests() {
 
 async function loadPendingTimeEditRequests() {
   try {
-    const q = query(collection(db, "timeEditRequests"), orderBy("requestedAt", "desc"));
+    const q = query(tcol("timeEditRequests"), orderBy("requestedAt", "desc"));
     const snapshot = await getDocs(q);
     let html = "";
 
@@ -1279,7 +1435,7 @@ async function approveTimeEditRequest(requestId) {
   if (!confirm("Approve this time edit request and add it to the employee punch records?")) return;
 
   try {
-    const requestRef = doc(db, "timeEditRequests", requestId);
+    const requestRef = tdoc("timeEditRequests", requestId);
     const requestSnap = await getDoc(requestRef);
     if (!requestSnap.exists()) return alert("Request not found.");
 
@@ -1290,7 +1446,7 @@ async function approveTimeEditRequest(requestId) {
       ? requestData.requestedDateTime.toDate()
       : new Date(requestData.requestedDateTime);
 
-    await addDoc(collection(db, "punches"), {
+    await addDoc(tcol("punches"), {
       employeeId: requestData.employeeId,
       employeeName: requestData.employeeName,
       employeeEmail: requestData.employeeEmail,
@@ -1323,7 +1479,7 @@ async function rejectTimeEditRequest(requestId) {
   if (!confirm("Reject this time edit request?")) return;
 
   try {
-    await updateDoc(doc(db, "timeEditRequests", requestId), {
+    await updateDoc(tdoc("timeEditRequests", requestId), {
       status: "Rejected",
       reviewedBy: adminUser.email.toLowerCase().trim(),
       reviewedAt: serverTimestamp()
@@ -1390,7 +1546,7 @@ async function submitWeeklySignature() {
   if (!currentUserName) currentUserName = await getEmployeeName(user.uid, cleanEmail);
 
   try {
-    await setDoc(doc(db, "weeklySignatures", signatureId), {
+    await setDoc(tdoc("weeklySignatures", signatureId), {
       employeeId: user.uid,
       employeeName: currentUserName || cleanEmail,
       employeeEmail: cleanEmail,
@@ -1415,7 +1571,7 @@ async function checkWeeklySignature() {
   const signatureId = `${user.uid}_${currentWeek}`;
 
   try {
-    const signatureDoc = await getDoc(doc(db, "weeklySignatures", signatureId));
+    const signatureDoc = await getDoc(tdoc("weeklySignatures", signatureId));
 
     if (signatureDoc.exists()) {
       const data = signatureDoc.data();
@@ -1443,7 +1599,7 @@ async function loadWeeklySignatures() {
   if (!selectedWeek) return alert("Please choose a week first.");
 
   try {
-    const q = query(collection(db, "weeklySignatures"), orderBy("signedAt", "desc"));
+    const q = query(tcol("weeklySignatures"), orderBy("signedAt", "desc"));
     const snapshot = await getDocs(q);
     let html = "";
 
@@ -1486,7 +1642,7 @@ async function loadWeeklyRecords() {
     const { startOfWeek, endOfWeek } = getWeekDateRange(selectedWeek);
     const weekDates = getWeekDates(startOfWeek);
     const employeeNamesByEmail = await getEmployeeNamesByEmail();
-    const q = query(collection(db, "punches"), orderBy("time", "asc"));
+    const q = query(tcol("punches"), orderBy("time", "asc"));
     const snapshot = await getDocs(q);
     const grouped = {};
 
@@ -1526,7 +1682,7 @@ async function loadMyHistory() {
     const cleanEmail = user.email.toLowerCase().trim();
     const { startOfWeek, endOfWeek } = getWeekDateRange(selectedWeek);
     const weekDates = getWeekDates(startOfWeek);
-    const q = query(collection(db, "punches"), orderBy("time", "asc"));
+    const q = query(tcol("punches"), orderBy("time", "asc"));
     const snapshot = await getDocs(q);
     const days = emptyWeek();
 
@@ -1553,7 +1709,7 @@ async function loadAdminPunchEditor() {
   try {
     const { startOfWeek, endOfWeek } = getWeekDateRange(selectedWeek);
     const employeeNamesByEmail = await getEmployeeNamesByEmail();
-    const q = query(collection(db, "punches"), orderBy("time", "asc"));
+    const q = query(tcol("punches"), orderBy("time", "asc"));
     const snapshot = await getDocs(q);
     let html = "";
 
@@ -1624,7 +1780,7 @@ async function saveEditedPunch() {
   if (!confirm("Save changes to this employee punch?")) return;
 
   try {
-    await updateDoc(doc(db, "punches", punchId), {
+    await updateDoc(tdoc("punches", punchId), {
       type: typeValue,
       time: newDateTime,
       source: "Admin Modified Punch",
@@ -1649,7 +1805,7 @@ async function softDeletePunch(punchId) {
   if (!confirm("Are you sure you want to delete this punch? It will disappear from records, but it will still be saved in Firebase as deleted.")) return;
 
   try {
-    await updateDoc(doc(db, "punches", punchId), {
+    await updateDoc(tdoc("punches", punchId), {
       deleted: true,
       deletedBy: adminUser.email.toLowerCase().trim(),
       deletedAt: serverTimestamp()
@@ -1670,26 +1826,36 @@ async function softDeletePunch(punchId) {
 
 async function saveEmployeeName(uid, email, name, isNewAccount) {
   const cleanEmail = email.toLowerCase().trim();
-  const employeeData = { name, email: cleanEmail, updatedAt: serverTimestamp() };
+  const employeeData = {
+    uid,
+    name,
+    email: cleanEmail,
+    role: currentUserRole || "employee",
+    companyId: currentCompanyId,
+    active: true,
+    updatedAt: serverTimestamp()
+  };
   if (isNewAccount) employeeData.createdAt = serverTimestamp();
 
-  await setDoc(doc(db, "employees", uid), employeeData, { merge: true });
-  await setDoc(doc(db, "employeeNames", cleanEmail), { name, email: cleanEmail, updatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(tdoc("employees", uid), employeeData, { merge: true });
+  await setDoc(tdoc("employeeNames", cleanEmail), { name, email: cleanEmail, updatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(doc(db, "users", uid), { uid, email: cleanEmail, name, companyId: currentCompanyId, role: currentUserRole || "employee", updatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(doc(db, "companies", currentCompanyId, "members", uid), employeeData, { merge: true });
 }
 
 async function getEmployeeName(uid, email) {
   const cleanEmail = email.toLowerCase().trim();
-  const employeeDoc = await getDoc(doc(db, "employees", uid));
+  const employeeDoc = await getDoc(tdoc("employees", uid));
   if (employeeDoc.exists() && employeeDoc.data().name) return employeeDoc.data().name;
 
-  const employeeNameDoc = await getDoc(doc(db, "employeeNames", cleanEmail));
+  const employeeNameDoc = await getDoc(tdoc("employeeNames", cleanEmail));
   if (employeeNameDoc.exists() && employeeNameDoc.data().name) return employeeNameDoc.data().name;
 
   return "";
 }
 
 async function getEmployeeNamesByEmail() {
-  const namesSnapshot = await getDocs(collection(db, "employeeNames"));
+  const namesSnapshot = await getDocs(tcol("employeeNames"));
   const employeeNamesByEmail = {};
 
   namesSnapshot.forEach((docSnap) => {
@@ -2002,10 +2168,17 @@ onAuthStateChanged(auth, async (user) => {
     footerNote.classList.remove("hidden");
 
     const cleanEmail = user.email.toLowerCase().trim();
+    const hasCompany = await loadUserCompany(user);
+    if (!hasCompany) {
+      alert("This account is not connected to a company workspace yet. Create a new company account or ask an owner to invite you.");
+      await signOut(auth);
+      return;
+    }
+
     currentUserName = await getEmployeeName(user.uid, cleanEmail);
     updateProfileUI(user);
 
-    const isCurrentUserAdmin = adminEmails.map((email) => email.toLowerCase().trim()).includes(cleanEmail);
+    const isCurrentUserAdmin = isOwnerOrAdmin();
 
     if (isCurrentUserAdmin) {
       adminMenuLinks.classList.remove("hidden");
@@ -2043,6 +2216,9 @@ onAuthStateChanged(auth, async (user) => {
     editPunchModal.classList.add("hidden");
 
     currentUserName = "";
+    currentCompanyId = "";
+    currentCompanySettings = null;
+    currentUserRole = "employee";
     cachedEmployees = [];
   }
 });

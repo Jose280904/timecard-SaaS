@@ -1189,3 +1189,30 @@ body {
     max-width: 245px !important;
   }
 }
+/* =========================
+   SaaS onboarding / company settings
+   ========================= */
+.form-divider {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--silver);
+  margin: 24px 0 8px;
+}
+
+input[type="color"] {
+  min-height: 54px;
+  padding: 8px;
+}
+
+input[type="file"] {
+  background: var(--white);
+  border: 1px solid #c9ccd1;
+}
+
+.billing-box {
+  margin-top: 24px;
+  padding: 20px;
+  border-radius: 16px;
+  background: #f9fafb;
+  border: 1px solid #d8dadd;
+}

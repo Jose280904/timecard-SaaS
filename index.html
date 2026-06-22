@@ -61,6 +61,7 @@
       <button class="menu-link" type="button" data-page="adminTimeEditPage">Time Edit Approvals</button>
       <button class="menu-link" type="button" data-page="adminWeeklyRecordsPage">Weekly Records</button>
       <button class="menu-link" type="button" data-page="adminSignaturesPage">Signatures Log</button>
+      <button class="menu-link" type="button" data-page="companySettingsPage">Company Settings</button>
       <button class="menu-link" type="button" data-page="adminPunchEditorPage">Edit Punches</button>
     </div>
 
@@ -89,9 +90,20 @@
 
     <section id="signupBox" class="card auth-card hidden">
       <h2>Create Account</h2>
-      <p class="muted">New users need to enter their name once.</p>
+      <p class="muted">Create your company workspace. You will become the owner/admin.</p>
 
-      <input id="signupName" type="text" placeholder="Full Name" autocomplete="name" />
+      <label for="companyName">Company Name:</label>
+      <input id="companyName" type="text" placeholder="Example: ABC Electric" autocomplete="organization" />
+
+      <label for="companyThemeColor">Company Theme Color:</label>
+      <input id="companyThemeColor" type="color" value="#111111" />
+
+      <label for="companyLogo">Company Logo:</label>
+      <input id="companyLogo" type="file" accept="image/*" />
+
+      <hr class="form-divider" />
+
+      <input id="signupName" type="text" placeholder="Owner Full Name" autocomplete="name" />
       <input id="signupEmail" type="email" placeholder="Email" autocomplete="email" />
 
       <div class="password-row">
@@ -233,6 +245,34 @@
 
             <button id="saveNameBtn" type="button">Save Name</button>
             <button id="resetPasswordBtn" type="button" class="outline-btn">Send Password Reset Email</button>
+          </section>
+        </div>
+      </section>
+
+      <section id="companySettingsPage" class="app-page hidden admin-page">
+        <div class="page-inner">
+          <section id="companySettingsBox" class="card">
+            <h2>Company Settings</h2>
+            <p class="muted">Update the company logo, app color, workspace name, and billing status.</p>
+
+            <label for="settingsCompanyName">Company Name:</label>
+            <input id="settingsCompanyName" type="text" placeholder="Company name" autocomplete="organization" />
+
+            <label for="settingsThemeColor">Theme Color:</label>
+            <input id="settingsThemeColor" type="color" value="#111111" />
+
+            <label for="settingsLogo">Replace Logo:</label>
+            <input id="settingsLogo" type="file" accept="image/*" />
+
+            <button id="saveCompanySettingsBtn" type="button">Save Company Settings</button>
+
+            <div class="billing-box">
+              <p class="status-label">Billing</p>
+              <h3 id="billingPlanText">Trial - setup needed</h3>
+              <p class="muted">Stripe checkout and the customer portal need Cloud Functions before real payments can run.</p>
+              <button id="startTrialBtn" type="button" class="outline-btn">Start / Upgrade Plan</button>
+              <button id="manageBillingBtn" type="button" class="outline-btn">Manage Billing</button>
+            </div>
           </section>
         </div>
       </section>
